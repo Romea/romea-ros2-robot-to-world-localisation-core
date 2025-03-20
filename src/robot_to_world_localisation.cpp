@@ -24,6 +24,8 @@ namespace romea
 {
 namespace ros2
 {
+namespace localisation
+{
 
 //-----------------------------------------------------------------------------
 template<core::FilterType FilterType_>
@@ -67,7 +69,7 @@ void R2WLocalisation<FilterType_>::make_filter_()
 template<core::FilterType FilterType_>
 void R2WLocalisation<FilterType_>::make_status_publisher_()
 {
-  using DataType = core::LocalisationFSMState;
+  using DataType = core::localisation::FSMState;
   using MsgType = romea_localisation_msgs::msg::LocalisationStatus;
   status_publisher_ = make_data_publisher<DataType, MsgType>(
     node_, "status", reliable(1), true);
@@ -122,9 +124,9 @@ void R2WLocalisation<FilterType_>::timer_callback_()
   auto stamp = node_->get_clock()->now();
 
   auto fsm_state = filter_->get_fsm_state();
-  if (fsm_state == core::LocalisationFSMState::RUNNING) {
+  if (fsm_state == core::localisation::FSMState::RUNNING) {
     const auto & results = filter_->get_results(to_romea_duration(stamp));
-    auto odom = results.toPoseAndBodyTwist3D();
+    auto odom = results.to_pose_and_body_twist3d();
 
     // std::cout << "odom " <<
     //   odom.pose.position.x() << " " <<
@@ -153,10 +155,11 @@ void R2WLocalisation<FilterType_>::publish_diagnostics_(const rclcpp::Time & sta
 template class R2WLocalisation<core::FilterType::KALMAN>;
 template class R2WLocalisation<core::FilterType::PARTICLE>;
 
+}  // namespace localisation
 }  // namespace ros2
 }  // namespace romea
 
 //-----------------------------------------------------------------------------
 #include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE(romea::ros2::R2WKalmanLocalisation)
-RCLCPP_COMPONENTS_REGISTER_NODE(romea::ros2::R2WParticleLocalisation)
+RCLCPP_COMPONENTS_REGISTER_NODE(romea::ros2::localisation::R2WKalmanLocalisation)
+RCLCPP_COMPONENTS_REGISTER_NODE(romea::ros2::localisation::R2WParticleLocalisation)

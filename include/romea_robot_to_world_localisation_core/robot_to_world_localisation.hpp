@@ -33,6 +33,8 @@ namespace romea
 {
 namespace ros2
 {
+namespace localisation
+{
 
 template<core::FilterType FilterType_>
 class R2WLocalisation
@@ -73,12 +75,13 @@ protected:
   std::shared_ptr<StampedPublisherBase<core::Pose3D>> tf_publisher_;
   std::shared_ptr<StampedPublisherBase<core::PoseAndTwist3D>> odom_publisher_;
   std::shared_ptr<StampedPublisherBase<core::DiagnosticReport>> diagnostic_publisher_;
-  std::shared_ptr<PublisherBase<core::LocalisationFSMState>> status_publisher_;
+  std::shared_ptr<PublisherBase<core::localisation::FSMState>> status_publisher_;
 };
 
 using R2WKalmanLocalisation = R2WLocalisation<core::FilterType::KALMAN>;
 using R2WParticleLocalisation = R2WLocalisation<core::FilterType::PARTICLE>;
 
+}  // namespace localisation
 }  // namespace ros2
 }  // namespace romea
 

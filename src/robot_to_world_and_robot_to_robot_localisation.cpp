@@ -19,6 +19,8 @@ namespace romea
 {
 namespace ros2
 {
+namespace localisation
+{
 
 //-----------------------------------------------------------------------------
 template<core::FilterType FilterType_>
@@ -61,11 +63,11 @@ template<core::FilterType FilterType_>
 void R2WR2RLocalisation<FilterType_>::leader_odom_callback_(OdometryMsg::ConstSharedPtr msg)
 {
   auto fsm_state = this->filter_->get_fsm_state();
-  if (fsm_state == core::LocalisationFSMState::RUNNING) {
+  if (fsm_state == core::localisation::FSMState::RUNNING) {
     const auto & results = this->filter_->get_results(extract_duration(*msg));
 
-    core::Pose2D follower_pose = results.toPose2D();
-    core::Pose2D leader_pose = toPose2D(to_romea(msg->pose));
+    core::Pose2D follower_pose = results.to_pose2d();
+    core::Pose2D leader_pose = core::toPose2D(to_romea(msg->pose));
 
     core::PoseAndTwist2D follower_to_leader_pose;
     follower_to_leader_pose.pose.yaw =
@@ -85,10 +87,11 @@ void R2WR2RLocalisation<FilterType_>::leader_odom_callback_(OdometryMsg::ConstSh
 template class R2WR2RLocalisation<core::FilterType::KALMAN>;
 template class R2WR2RLocalisation<core::FilterType::PARTICLE>;
 
+}  // namespace localisation
 }  // namespace ros2
 }  // namespace romea
 
 //-----------------------------------------------------------------------------
 #include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE(romea::ros2::R2WR2RKalmanLocalisation)
-RCLCPP_COMPONENTS_REGISTER_NODE(romea::ros2::R2WR2RParticleLocalisation)
+RCLCPP_COMPONENTS_REGISTER_NODE(romea::ros2::localisation::R2WR2RKalmanLocalisation)
+RCLCPP_COMPONENTS_REGISTER_NODE(romea::ros2::localisation::R2WR2RParticleLocalisation)

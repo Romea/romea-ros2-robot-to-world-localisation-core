@@ -17,18 +17,21 @@
 
 // std
 #include <list>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
 
 // romea
-#include "romea_core_localisation/robot_to_world/R2WlocalisationTraits.hpp"
-#include "romea_localisation_utils/filter/localisation_factory.hpp"
-#include "romea_localisation_utils/filter/localisation_updater_interface.hpp"
+#include "romea_core_localisation/robot_to_world/traits.hpp"
+#include "romea_localisation_utils/filter/factory.hpp"
+#include "romea_localisation_utils/filter/updater_interface.hpp"
 
 namespace romea
 {
 namespace ros2
+{
+namespace localisation
 {
 
 template<core::FilterType FilterType_>
@@ -36,48 +39,47 @@ class R2WLocalisationFilter
 {
 public:
   using Filter =
-    typename core::R2WLocalisationTraits<FilterType_>::Filter;
+    typename core::localisation::R2WTraits<FilterType_>::Filter;
   using Predictor =
-    typename core::R2WLocalisationTraits<FilterType_>::Predictor;
+    typename core::localisation::R2WTraits<FilterType_>::Predictor;
   using UpdaterTwist =
-    typename core::R2WLocalisationTraits<FilterType_>::UpdaterTwist;
+    typename core::localisation::R2WTraits<FilterType_>::UpdaterTwist;
   using UpdaterLinearSpeed =
-    typename core::R2WLocalisationTraits<FilterType_>::UpdaterLinearSpeed;
+    typename core::localisation::R2WTraits<FilterType_>::UpdaterLinearSpeed;
   using UpdaterLinearSpeeds =
-    typename core::R2WLocalisationTraits<FilterType_>::UpdaterLinearSpeeds;
+    typename core::localisation::R2WTraits<FilterType_>::UpdaterLinearSpeeds;
   using UpdaterAngularSpeed =
-    typename core::R2WLocalisationTraits<FilterType_>::UpdaterAngularSpeed;
+    typename core::localisation::R2WTraits<FilterType_>::UpdaterAngularSpeed;
   using UpdaterAttitude =
-    typename core::R2WLocalisationTraits<FilterType_>::UpdaterAttitude;
+    typename core::localisation::R2WTraits<FilterType_>::UpdaterAttitude;
   using UpdaterCourse =
-    typename core::R2WLocalisationTraits<FilterType_>::UpdaterCourse;
+    typename core::localisation::R2WTraits<FilterType_>::UpdaterCourse;
   using UpdaterRange =
-    typename core::R2WLocalisationTraits<FilterType_>::UpdaterRange;
+    typename core::localisation::R2WTraits<FilterType_>::UpdaterRange;
   using UpdaterPose =
-    typename core::R2WLocalisationTraits<FilterType_>::UpdaterPose;
+    typename core::localisation::R2WTraits<FilterType_>::UpdaterPose;
   using UpdaterPosition =
-    typename core::R2WLocalisationTraits<FilterType_>::UpdaterPosition;
+    typename core::localisation::R2WTraits<FilterType_>::UpdaterPosition;
   using Results =
-    typename core::R2WLocalisationTraits<FilterType_>::Results;
+    typename core::localisation::R2WTraits<FilterType_>::Results;
 
-  using UpdaterInterface = LocalisationUpdaterInterfaceBase;
-  using UpdaterInterfaceTwist = LocalisationUpdaterInterface<Filter, UpdaterTwist,
+  using UpdaterInterfaceTwist = UpdaterInterface<Filter, UpdaterTwist,
       romea_localisation_msgs::msg::ObservationTwist2DStamped>;
-  using UpdaterInterfaceLinearSpeed = LocalisationUpdaterInterface<Filter, UpdaterLinearSpeed,
+  using UpdaterInterfaceLinearSpeed = UpdaterInterface<Filter, UpdaterLinearSpeed,
       romea_localisation_msgs::msg::ObservationTwist2DStamped>;
-  using UpdaterInterfaceLinearSpeeds = LocalisationUpdaterInterface<Filter, UpdaterLinearSpeeds,
+  using UpdaterInterfaceLinearSpeeds = UpdaterInterface<Filter, UpdaterLinearSpeeds,
       romea_localisation_msgs::msg::ObservationTwist2DStamped>;
-  using UpdaterInterfaceAngularSpeed = LocalisationUpdaterInterface<Filter, UpdaterAngularSpeed,
+  using UpdaterInterfaceAngularSpeed = UpdaterInterface<Filter, UpdaterAngularSpeed,
       romea_localisation_msgs::msg::ObservationAngularSpeedStamped>;
-  using UpdaterInterfaceAttitude = LocalisationUpdaterInterface<Filter, UpdaterAttitude,
+  using UpdaterInterfaceAttitude = UpdaterInterface<Filter, UpdaterAttitude,
       romea_localisation_msgs::msg::ObservationAttitudeStamped>;
-  using UpdaterInterfaceCourse = LocalisationUpdaterInterface<Filter, UpdaterCourse,
+  using UpdaterInterfaceCourse = UpdaterInterface<Filter, UpdaterCourse,
       romea_localisation_msgs::msg::ObservationCourseStamped>;
-  using UpdaterInterfacePosition = LocalisationUpdaterInterface<Filter, UpdaterPosition,
+  using UpdaterInterfacePosition = UpdaterInterface<Filter, UpdaterPosition,
       romea_localisation_msgs::msg::ObservationPosition2DStamped>;
-  using UpdaterInterfaceRange = LocalisationUpdaterInterface<Filter, UpdaterRange,
+  using UpdaterInterfaceRange = UpdaterInterface<Filter, UpdaterRange,
       romea_localisation_msgs::msg::ObservationRangeStamped>;
-  using UpdaterInterfacePose = LocalisationUpdaterInterface<Filter, UpdaterPose,
+  using UpdaterInterfacePose = UpdaterInterface<Filter, UpdaterPose,
       romea_localisation_msgs::msg::ObservationPose2DStamped>;
 
 public:
@@ -86,7 +88,7 @@ public:
   void reset();
 
 public:
-  core::LocalisationFSMState get_fsm_state();
+  core::localisation::FSMState get_fsm_state();
 
   const Results & get_results(const core::Duration & duration);
 
@@ -115,7 +117,7 @@ private:
 private:
   std::shared_ptr<Filter> filter_;
   std::unique_ptr<Results> results_;
-  std::list<std::unique_ptr<UpdaterInterface>> updater_interfaces_;
+  std::list<std::unique_ptr<UpdaterInterfaceBase>> updater_interfaces_;
 };
 
 
@@ -151,7 +153,7 @@ R2WLocalisationFilter<FilterType_>::R2WLocalisationFilter(std::shared_ptr<rclcpp
 
 //-----------------------------------------------------------------------------
 template<core::FilterType FilterType_>
-core::LocalisationFSMState R2WLocalisationFilter<FilterType_>::get_fsm_state()
+core::localisation::FSMState R2WLocalisationFilter<FilterType_>::get_fsm_state()
 {
   return filter_->getFSMState();
 }
@@ -247,7 +249,7 @@ template<core::FilterType FilterType_>
 const typename R2WLocalisationFilter<FilterType_>::Results &
 R2WLocalisationFilter<FilterType_>::get_results(const core::Duration & duration)
 {
-  results_->setDuration(duration);
+  results_->set_duration(duration);
   filter_->getCurrentState(duration, results_.get());
   return *results_;
 }
@@ -266,6 +268,7 @@ core::DiagnosticReport R2WLocalisationFilter<FilterType_>::make_diagnostic_repor
   return report;
 }
 
+}  // namespace localisation
 }  // namespace ros2
 }  // namespace romea
 

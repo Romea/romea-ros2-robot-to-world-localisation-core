@@ -34,6 +34,8 @@ namespace romea
 {
 namespace ros2
 {
+namespace localisation
+{
 
 template<core::FilterType FilterType_>
 class R2WR2RLocalisation : public R2WLocalisation<FilterType_>
@@ -63,6 +65,7 @@ private:
 using R2WR2RKalmanLocalisation = R2WR2RLocalisation<core::FilterType::KALMAN>;
 using R2WR2RParticleLocalisation = R2WR2RLocalisation<core::FilterType::PARTICLE>;
 
+}  // namespace localisation
 }  // namespace ros2
 }  // namespace romea
 
