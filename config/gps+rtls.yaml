@@ -1,0 +1,26 @@
+filter:
+  state_pool_size: 1000
+  number_of_particle: 200
+predictor:
+  maximal_dead_recknoning_travelled_distance: 2.
+  maximal_dead_recknoning_elapsed_time: 10.
+angular_speed_updater:
+  minimal_rate: 10
+linear_speeds_updater:
+  minimal_rate: 10
+position_updater:
+  minimal_rate: 1
+  trigger: always
+course_updater:
+  minimal_rate: 1
+  trigger: once
+attitude_updater:
+  minimal_rate: 10
+pose_updater:
+  minimal_rate: 1
+  trigger: once
+range_updater:
+  minimal_rate: 10
+  trigger: always
+publish_rate: 10
+debug: true

@@ -202,7 +202,7 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME})
 
 install(
-  DIRECTORY launch
+  DIRECTORY config launch
   DESTINATION share/${PROJECT_NAME}
 )
 

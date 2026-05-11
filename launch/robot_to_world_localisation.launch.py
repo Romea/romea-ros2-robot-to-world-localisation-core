@@ -14,6 +14,8 @@
 
 import yaml
 
+from ament_index_python.packages import get_package_share_directory
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
@@ -50,7 +52,8 @@ def launch_setup(context, *args, **kwargs):
             package="romea_robot_to_world_localisation_core",
             executable="robot_to_world_"+filter_type+"_localisation_node",
             name=filter_name,
-            parameters=[filter_configuration],
+            namespace="/robot/localisation",
+            parameters=[filter_configuration, {"use_sim_time" : True}],
             output="screen",
         )
 
@@ -72,15 +75,18 @@ def launch_setup(context, *args, **kwargs):
 
 def generate_launch_description():
 
-    declared_arguments = []
+    default_filter_configuration_file_path = (
+        get_package_share_directory("romea_robot_to_world_localisation_core") 
+        +  "/config/gps_only.yaml"
+    )
 
-    declared_arguments.append(
-        DeclareLaunchArgument("filter_name", default_value="robot_to_world_localisation"))
-
-    declared_arguments.append(DeclareLaunchArgument("filter_type", default_value="kalman"))
-
-    declared_arguments.append(DeclareLaunchArgument("filter_configuration_file_path"))
-
-    declared_arguments.append(DeclareLaunchArgument("component_container", default_value=""))
+    declared_arguments = [
+        DeclareLaunchArgument("filter_name", default_value="robot_to_world_localisation"),
+        DeclareLaunchArgument("filter_type", default_value="kalman"),
+        DeclareLaunchArgument(
+            "filter_configuration_file_path",
+            default_value=default_filter_configuration_file_path),
+        DeclareLaunchArgument("component_container", default_value="")
+    ]
 
     return LaunchDescription(declared_arguments + [OpaqueFunction(function=launch_setup)])
