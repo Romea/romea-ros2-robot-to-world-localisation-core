@@ -19,11 +19,11 @@
 #include <memory>
 
 // romea
-#include "romea_common_utils/publishers/data_publisher.hpp"
 #include "romea_common_utils/conversions/pose_and_twist3d_conversions.hpp"
+#include "romea_common_utils/publishers/data_publisher.hpp"
 #include "romea_common_utils/publishers/diagnostic_publisher.hpp"
-#include "romea_common_utils/publishers/transform_publisher.hpp"
 #include "romea_common_utils/publishers/odom_publisher.hpp"
+#include "romea_common_utils/publishers/transform_publisher.hpp"
 
 // local
 #include "romea_robot_to_world_localisation_core/robot_to_world_localisation_filter.hpp"
@@ -47,8 +47,7 @@ public:
   virtual ~R2WLocalisation() = default;
 
   ROMEA_ROBOT_TO_WORLD_LOCALISATION_CORE_PUBLIC
-  rclcpp::node_interfaces::NodeBaseInterface::SharedPtr
-  get_node_base_interface() const;
+  rclcpp::node_interfaces::NodeBaseInterface::SharedPtr get_node_base_interface() const;
 
 protected:
   void make_filter_();

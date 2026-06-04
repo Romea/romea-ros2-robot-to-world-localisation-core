@@ -71,8 +71,7 @@ void R2WLocalisation<FilterType_>::make_status_publisher_()
 {
   using DataType = core::localisation::FSMState;
   using MsgType = romea_localisation_msgs::msg::LocalisationStatus;
-  status_publisher_ = make_data_publisher<DataType, MsgType>(
-    node_, "status", reliable(1), true);
+  status_publisher_ = make_data_publisher<DataType, MsgType>(node_, "status", reliable(1), true);
 }
 
 //-----------------------------------------------------------------------------
@@ -93,10 +92,7 @@ template<core::FilterType FilterType_>
 void R2WLocalisation<FilterType_>::make_tf_publisher_()
 {
   tf_publisher_ = make_transform_publisher<core::Pose3D>(
-    node_,
-    get_map_frame_id(node_),
-    get_base_footprint_frame_id(node_),
-    true);
+    node_, get_map_frame_id(node_), get_base_footprint_frame_id(node_), true);
 }
 
 //-----------------------------------------------------------------------------

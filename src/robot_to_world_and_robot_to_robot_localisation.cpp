@@ -35,8 +35,9 @@ R2WR2RLocalisation<FilterType_>::R2WR2RLocalisation(const rclcpp::NodeOptions & 
 template<core::FilterType FilterType_>
 void R2WR2RLocalisation<FilterType_>::make_leader_pose_and_twist_pub_()
 {
-  leader_pose_and_twist_publisher_ = make_stamped_data_publisher<core::PoseAndTwist2D,
-      romea_common_msgs::msg::PoseAndTwist2DStamped>(
+  leader_pose_and_twist_publisher_ = make_stamped_data_publisher<
+    core::PoseAndTwist2D,
+    romea_common_msgs::msg::PoseAndTwist2DStamped>(
     this->node_,
     "filtered_leader_pose",
     get_base_footprint_frame_id(this->node_),
@@ -54,8 +55,8 @@ void R2WR2RLocalisation<FilterType_>::make_leader_odom_sub_()
   leader_odom_sub_ = this->node_->template create_subscription<OdometryMsg>(
     "leader_filtered_odom", best_effort(10), callback);
 
-  std::cout << "leader_odom_sub_->get_topic_name() " << leader_odom_sub_->get_topic_name() <<
-    std::endl;
+  std::cout << "leader_odom_sub_->get_topic_name() " << leader_odom_sub_->get_topic_name()
+            << std::endl;
 }
 
 //-----------------------------------------------------------------------------
@@ -73,9 +74,8 @@ void R2WR2RLocalisation<FilterType_>::leader_odom_callback_(OdometryMsg::ConstSh
     follower_to_leader_pose.pose.yaw =
       core::betweenMinusPiAndPi(leader_pose.yaw - follower_pose.yaw);
 
-    follower_to_leader_pose.pose.position =
-      core::eulerAngleToRotation2D(-follower_pose.yaw) *
-      (leader_pose.position - follower_pose.position);
+    follower_to_leader_pose.pose.position = core::eulerAngleToRotation2D(-follower_pose.yaw) *
+                                            (leader_pose.position - follower_pose.position);
 
     // TOTO(jean) add covariance
     follower_to_leader_pose.twist = core::toTwist2D(to_romea(msg->twist));
