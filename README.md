@@ -1,160 +1,247 @@
 # romea_robot_to_world_localisation_core
 
-This package provides robot to world localisation node able to estimate robot absolute position by a Kalman or particle filter using observations provided by diferent localisation plugins: odo ([gitlab](https://gitlab.irstea.fr/romea_ros2/algorithms/localisation/romea_localisation_odo_plugin), [github](https://github.com/Romea/romea-ros2-localisation-odo-plugin)), imu ([gitlab](https://gitlab.irstea.fr/romea_ros2/algorithms/localisation/romea_localisation_imu_plugin), [github](https://github.com/Romea/romea-ros2-localisation-imu-plugin)) and  robot to world rtls ([gitlab](https://gitlab.irstea.fr/romea_ros2/algorithms/localisation/romea_robot_to_world_localisation_rtls_plugin), [github](https://github.com/Romea/romea-ros2-robot-to-world-localisation-rtls-plugin)) plugins, radar and  lidar plugins. This plugins are used to convert data coming from sensors to observations that can be used by both filters. 
+`romea_robot_to_world_localisation_core` provides ROS2 component nodes that fuse localisation observations into a robot-to-world localisation estimate.
+
+The package does not read sensors directly. It consumes typed observation messages from `romea_localisation_msgs`, typically produced by localisation plugin nodes, and feeds them to a robot-to-world localisation filter from `romea_core_localisation`.
+
+It also provides an optional robot-to-world and robot-to-robot mode. In that mode, the node keeps the robot-to-world localisation filter and also receives the filtered odometry of a leader robot in order to publish the relative leader pose in the follower robot frame.
+
+## 1) Concept
+
+Localisation plugin nodes convert ROS2 sensor or controller data into typed observations. This package is the filter layer that subscribes to these observations and instantiates robot-to-world filter implementations provided by `romea_core_localisation`.
+
+The filter fuses odometry, IMU, GPS and optional RTLS observations to estimate the vehicle pose in the world frame, together with its uncertainty. The result is published as `nav_msgs/msg/Odometry` and as a TF transform between the world frame and the robot base frame. The node also publishes diagnostics to check that the expected observations exist and arrive at the expected rate, and a localisation status message to indicate whether the filter result can be used by other nodes.
+
+A second node variant also computes the relative pose between this robot and a leader robot. It consumes the leader robot localisation result as `nav_msgs/msg/Odometry` and publishes the leader pose in the follower robot frame. This is useful for platooning or cooperative behaviours.
+
+```mermaid
+flowchart LR
+  subgraph plugins["Localisation plugin nodes"]
+    odo_plugin["romea_localisation_odo_plugin<br/>controller odometry"]
+    imu_plugin["romea_localisation_imu_plugin<br/>IMU data"]
+    gps_plugin["romea_localisation_gps_plugin<br/>GPS NMEA data"]
+    rtls_plugin["RTLS localisation plugin<br/>RTLS data"]
+  end
+
+  subgraph observation_inputs["Localisation observations"]
+    twist["twist<br/>ObservationTwist2DStamped"]
+    angular_speed["angular_speed<br/>ObservationAngularSpeedStamped"]
+    attitude["attitude<br/>ObservationAttitudeStamped"]
+    position["position<br/>ObservationPosition2DStamped"]
+    course["course<br/>ObservationCourseStamped"]
+    range["range<br/>ObservationRangeStamped"]
+    pose["pose<br/>ObservationPose2DStamped"]
+  end
+
+  subgraph localisation_core["Robot-to-world localisation core"]
+    filter["localisation filter<br/>romea_core_localisation"]
+  end
+
+  subgraph outputs["ROS2 outputs"]
+    status["status<br/>LocalisationStatus"]
+    diagnostics["diagnostics<br/>diagnostic report"]
+    filtered_odom["filtered_odom<br/>Odometry"]
+    tf["map -> base_footprint<br/>TF transform"]
+  end
+
+  odo_plugin -->|publish| twist
+  imu_plugin -->|publish| angular_speed
+  imu_plugin -->|publish| attitude
+  gps_plugin -->|publish| position
+  gps_plugin -->|publish| course
+  rtls_plugin -->|publish| range
+  rtls_plugin -->|publish| pose
+
+  twist -->|consume| filter
+  angular_speed -->|consume| filter
+  attitude -->|consume| filter
+  position -->|consume| filter
+  course -->|consume| filter
+  range -->|consume| filter
+  pose -->|consume| filter
+
+  filter -->|publish| status
+  filter -->|publish| diagnostics
+  filter -->|publish| filtered_odom
+  filter -->|publish| tf
+
+  classDef pluginStyle fill:#eaf7ea,stroke:#5c9f5c,color:#111,rx:6,ry:6
+  classDef obs fill:#fff6d8,stroke:#c9a227,color:#111,rx:6,ry:6
+  classDef coreStyle fill:#f1eaff,stroke:#8b6fc6,color:#111,rx:6,ry:6
+  classDef ros2 fill:#e8f2ff,stroke:#5b8ec7,color:#111,rx:6,ry:6
+
+  class odo_plugin,imu_plugin,gps_plugin,rtls_plugin pluginStyle
+  class twist,angular_speed,attitude,position,course,range,pose obs
+  class filter coreStyle
+  class status,diagnostics,filtered_odom,tf ros2
+
+  style plugins fill:#f7fff7,stroke:#9ecf9e,rx:6,ry:6
+  style observation_inputs fill:#fffaf0,stroke:#dec86b,rx:6,ry:6
+  style localisation_core fill:#faf7ff,stroke:#b8a4dd,rx:6,ry:6
+  style outputs fill:#f6faff,stroke:#9abbe3,rx:6,ry:6
+```
+
+## 2) Provided nodes
+
+The documented nodes use the Kalman filter implementation.
+
+| Executable | Purpose |
+| ---------- | ------- |
+| `robot_to_world_kalman_localisation_node` | Estimate the robot pose in the world frame from localisation observations. |
+| `robot_to_world_and_robot_to_robot_kalman_localisation_node` | Estimate robot-to-world localisation and compute the relative pose of a leader robot from its filtered odometry. |
+
+All nodes use the ROS2 node name `robot_to_world_localisation`.
+
+## 3) Input topics
+
+The observation topics are local to the node namespace. They are usually remapped according to the robot configuration.
+
+| Topic | Message | Used by |
+| ----- | ------- | ------- |
+| `twist` | `romea_localisation_msgs/msg/ObservationTwist2DStamped` | Twist, linear speed or left/right linear speed updater, depending on enabled updater parameters. |
+| `angular_speed` | `romea_localisation_msgs/msg/ObservationAngularSpeedStamped` | Angular speed updater. |
+| `attitude` | `romea_localisation_msgs/msg/ObservationAttitudeStamped` | Attitude updater. |
+| `position` | `romea_localisation_msgs/msg/ObservationPosition2DStamped` | Position updater. |
+| `course` | `romea_localisation_msgs/msg/ObservationCourseStamped` | Course updater. |
+| `range` | `romea_localisation_msgs/msg/ObservationRangeStamped` | Range updater. |
+| `pose` | `romea_localisation_msgs/msg/ObservationPose2DStamped` | Pose updater. |
+| `leader_filtered_odom` | `nav_msgs/msg/Odometry` | Only used by the robot-to-world and robot-to-robot nodes. |
 
+An updater is created only when its `minimal_rate` parameter is greater than zero.
 
-# ROS2 core node description #
+## 4) Output topics
 
-#### 1) Subscribed Topics ####
+| Topic | Message | Description |
+| ----- | ------- | ----------- |
+| `filtered_odom` | `nav_msgs/msg/Odometry` | Estimated robot pose and twist in the world frame, with uncertainty. |
+| `status` | `romea_localisation_msgs/msg/LocalisationStatus` | Current localisation finite-state-machine status. |
+| `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | Diagnostic information for configured updaters. |
+| `filtered_leader_pose` | `romea_common_msgs/msg/PoseAndTwist2DStamped` | Relative leader pose and twist, only for robot-to-world and robot-to-robot nodes. |
 
-- **localisation/twist** (romea_localisation_msgs::msg::ObservationTwist2DStamped)
+The node also publishes the TF transform from `map_frame_id` to `base_footprint_frame_id`. The `filtered_leader_pose` frame is the configured `base_footprint_frame_id`.
 
-    This topic is provided by odo localisation plugin node and contains robot twist displacement observation deduced from odometry data coming from controller 
+## 5) Parameters
+
+### 5.1) Common parameters
 
-- **localisation/angular_speed** (romea_localisation_msgs::msg::ObservationAngularSpeedStamped)
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `base_footprint_frame_id` | string | `base_footprint` | Robot base frame used by the localisation outputs. |
+| `map_frame_id` | string | `map` | World frame used by the robot-to-world estimate. |
+| `publish_rate` | int | required | Timer frequency used to publish status, diagnostics and localisation results. |
+| `debug` | bool | `false` | Enables debug log files. |
+| `log_directory` | string | ROS2 logging directory | Directory used when debug logging is enabled. |
 
-    This topic is provided by imu localisation plugin node and contains robot angular speed observation deduced from data coming from IMU sensor
+### 5.2) Filter and predictor parameters
 
-- **localisation/position** (romea_localisation_msgs::msg::ObservationPosition2DStamped)
+| Parameter | Type | Description |
+| --------- | ---- | ----------- |
+| `filter.state_pool_size` | int | Size of the internal filter state pool. |
+| `predictor.maximal_dead_recknoning_travelled_distance` | double | Maximum travelled distance allowed in dead-reckoning mode. |
+| `predictor.maximal_dead_recknoning_elapsed_time` | double | Maximum elapsed time allowed in dead-reckoning mode. |
+| `predictor.maximal_position_circular_error_probability` | double | Maximum circular position uncertainty allowed in dead-reckoning mode. |
 
-    This topic is provided by gps localisation plugin node and contains a cartesian position with respect of an ENU reference frame defined by user, this observation is deduced from NMEA data coming from gps sensor
+### 5.3) Updater parameters
 
-- **localisation/course** (romea_localisation_msgs::msg::ObservationCourse2DStamped)
+Proprioceptive updaters use observations that describe the robot motion between two instants. A `minimal_rate` equal to `0` disables the updater.
 
-    This topic is provided by gps localisation plugin node and contains a robot course observation with of an ENU reference frame defined by user, this observation is deduced from NMEA data coming from gps sensor
+| Updater | Topic | Default `minimal_rate` | Description |
+| ------- | ----- | ---------------------- | ----------- |
+| `twist_updater` | `twist` | `10` | Uses the full 2D twist observation. |
+| `linear_speed_updater` | `twist` | `0` | Uses a single linear speed observation. |
+| `linear_speeds_updater` | `twist` | `0` | Uses left/right linear speed observations. |
+| `angular_speed_updater` | `angular_speed` | `0` | Uses angular speed observations. |
+| `attitude_updater` | `attitude` | `10` | Uses attitude observations. |
 
-- **localisation/pose** (romea_localisation_msgs::msg::ObservationPose2DStamped)
+Exteroceptive updaters use observations that directly constrain the robot pose in the world frame, or through landmarks/ranges. They also declare `<updater>.mahalanobis_distance_rejection_threshold`, used to reject outliers whose innovation is too far from the current filter state.
 
-    This topic is provided can be provided lidar, radar or rtls localisation plugin nodes. It contains a cartesian pose with respect of an ENU reference frame defined by user 
+| Updater | Topic | Default `minimal_rate` | Default `trigger` | Default Mahalanobis threshold | Description |
+| ------- | ----- | ---------------------- | ----------------- | ----------------------------- | ----------- |
+| `position_updater` | `position` | `1` | `always` | `5.0` | Uses 2D position observations. |
+| `course_updater` | `course` | `1` | `once` | `5.0` | Uses course observations. |
+| `range_updater` | `range` | `0` | `always` | `5.0` | Uses range observations. |
+| `pose_updater` | `pose` | `0` | `always` | `5.0` | Uses 2D pose observations. |
 
-- **localisation/range** (romea_localisation_msgs::msg::ObservationRangeStamped)
+`trigger` can be `always` or `once`. With `always`, each received observation can update the filter. With `once`, the updater is used only for the first valid observation, which is useful for initialisation data such as course.
 
-    This topic is provided by rtls localisation plugin node and contains range observation deduced from ranging data between rtls transceivers embedded on the robot and rtls transceivers located in the infrastructure   
+## 6) Configuration and run
 
-#### 2) Published Topics ####
+Run a robot-to-world Kalman localisation node with:
 
-- **leader_pose_filtered** (romea_common_msgs::msg::Pose2DStamped)
+```bash
+ros2 run romea_robot_to_world_localisation_core robot_to_world_kalman_localisation_node \
+  --ros-args --params-file path/to/robot_to_world_localisation.yaml
+```
 
-  Pose of robot leader in the ENU reference frame defined by user
+Run the robot-to-world and robot-to-robot variant with:
 
-#### 3) Parameters ####
+```bash
+ros2 run romea_robot_to_world_localisation_core robot_to_world_and_robot_to_robot_kalman_localisation_node \
+  --ros-args --params-file path/to/robot_to_world_localisation.yaml
+```
 
-  ~**filter.state_pool_size** (int , default: 1000)
+Example configuration:
 
-​    Size of the pool of filter states
+```yaml
+robot_to_world_localisation:
+  ros__parameters:
+    filter:
+      state_pool_size: 1000
 
-  ~**predictor.maximal_dead_recknoning_elapsed_time** (double, default: 1.0)
+    predictor:
+      maximal_dead_recknoning_travelled_distance: 2.0
+      maximal_dead_recknoning_elapsed_time: 10.0
+      maximal_position_circular_error_probability: 1000000.0
 
-​    Maximal elapsed time in dead reckoning mode before to stop localisation filter
+    map_frame_id: map
+    base_footprint_frame_id: base_footprint
+    publish_rate: 10
+    debug: false
 
-  ~**predictor.maximal_dead_recknoning_travelled_distance** (double, default: 1.0)
+    twist_updater:
+      minimal_rate: 10
 
-​     Maximal travelled distance in dead reckoning mode before to stop localisation filter
+    angular_speed_updater:
+      minimal_rate: 10
 
-  ~**predictor.maximal_position_circular_error_probability** (double, default)
+    attitude_updater:
+      minimal_rate: 10
 
-​    Maximal circular error in dead reckoning mode before to stop localisation filter
+    position_updater:
+      minimal_rate: 1
+      trigger: always
+      mahalanobis_distance_rejection_threshold: 5.0
 
-  ~**twist_updater.minimal_rate** (int, default: 10)
+    course_updater:
+      minimal_rate: 1
+      trigger: once
+      mahalanobis_distance_rejection_threshold: 5.0
 
-​    Minimal rate for twist_updater input data (provided by odo plugin), if this rate is equal to 0 twist_updater is not started 
+    range_updater:
+      minimal_rate: 0
+      trigger: always
+      mahalanobis_distance_rejection_threshold: 5.0
 
-  ~**linear_speed_updater.minimal_rate** (int, default: 0)
+    pose_updater:
+      minimal_rate: 0
+      trigger: always
+      mahalanobis_distance_rejection_threshold: 5.0
+```
 
-​    Minimal rate for linear_speed_updater input data (provided by odo plugin), if this rate is equal to 0 linear_speed_updater is not   started 
+## 7) Notes
 
-  ~**linear_speeds_updater.minimal_rate** (int, default: 0)
+The package installs example configuration files in `config/`:
 
-​    Minimal rate for linear_speeds_updater input data (provided by odo plugin), if this rate is equal to 0 linear_speeds_updater is not started 
+* `core.yaml`: enables the full set of common updaters;
+* `gps_only.yaml`: enables odometry, IMU, position and course observations;
+* `gps+rtls.yaml`: enables the same GPS-based observations plus pose and range observations.
 
-  ~**angular_updater.minimal_rate** (int, default: 0)
-
-​    Minimal rate for angular_updater input data (provided by imu plugin), if this rate is equal to 0 angular_updater is not started 
-
-  ~**position_updater.mahalanobis_distance_rejection_threshold** (double, default: 5.0)
-
-​    Mahalanobis distance taking into account by position updater to reject outliers 
-
-  ~**position_updater.minimal_rate** (int, default: 1)
-
-​    Minimal rate for position_updater input data (provided by gps plugin), if this rate is equal to 0 position_updater is not started 
-
-  ~**position_updater.trigger** (string, default: "always")
-
-​    Update trigger mode when position data is received. If "once" mode is selected the position updater will be triggered only one time otherwise the position updater will be triggerred each time data is received.
-
-  ~**course_updater.mahalanobis_distance_rejection_threshold** (double, default: 5.0)
-
-​    Mahalanobis distance taking into account by course updater to reject outliers 
-
-  ~**course_updater.minimal_rate** (int, default: 1)
-
-​    Minimal rate for course_updater input data (provided by gps plugin), if this rate is equal to 0 course_updater is not started 
-
-  ~**course_updater.trigger** (string, default: "once")
-
-​    Update trigger mode when course data is received. If "once" mode is selected the course updater will be triggered only one time otherwise the course updater will be triggerred each time data is received.
-
-  ~**pose_updater.mahalanobis_distance_rejection_threshold** (double, default: 5.0)
-
-​    Mahalanobis distance taking into account by pose updater to reject outliers 
-
-  ~**pose_updater.minimal_rate** (int, default: 1)
-
-​    Minimal rate for pose_updater input data (provided by rtls plugin), if this rate is equal to 0 pose_updater is not started 
-
-  ~**pose_updater.trigger** (string, default: "once")
-
-​    Update trigger mode when pose data is received. If "once" mode is selected the pose updater will be triggered only one time otherwise the pose updater will be triggerred each time data is received.
-
-  **~range_updater.mahalanobis_distance_rejection_threshold** (double, default: 5.0)
-
-​    Mahalanobis distance taking into account by range updater to reject outliers 
-
-  **~range_updater.minimal_rate** (int, default: 10)
-
-​    Minimal rate for position_updater input data (provided by rtls plugin); , if this rate is equal to 0 range_updater is not started  
-
-  **~range_updater.trigger** (string, default: "always")
-
-​    Update trigger mode when position data is received. If "once" mode is selected the range updater will be triggered only one time otherwise the range updater will be triggerred each time data is received.
-
-  **~base_footprint_frame_id ** (string, default: base_footprint):
-
-​    Name of robot base footprint
-
-  **~publish_rate** (int, default: 10)
-
-   Rate at which localisation results are published
-
-  **~log_directory** (string, default: result of rclcpp::get_logging_directory()):
-
-   Directory where localisation logs are stored
-
-  **~debug** (bool, default: false)
-
-   Enable debug logs
-
-## **Contributing**
-
-If you'd like to contribute to this project, here are some guidelines:
-
-1. Fork the repository.
-2. Create a new branch for your changes.
-3. Make your changes.
-4. Write tests to cover your changes.
-5. Run the tests to ensure they pass.
-6. Commit your changes.
-7. Push your changes to yo
+The example files are flat parameter fragments. When used directly with `ros2 run --params-file`, wrap their content under the `robot_to_world_localisation.ros__parameters` key as shown above.
 
 ## License
 
-This project is released under the Apache License 2.0. See the LICENSE file for details.
+This project is released under the Apache License 2.0. See the `LICENSE` file for details.
 
-### Authors
+## Authors
 
- romea_ros2_robot_to_world_localisation_core project was developed by **Jean Laneurit** in the context of BaudetRob2 ANR project.
-
-### Contact
-
-If you have any questions or comments about romea_ros2_robot_to_world_localisation_core project, please contact **[Jean Laneurit](mailto:jean.laneurit@inrae.fr)** 
+This package was developed by **Jean Laneurit** in the context of the BaudetRob2 ANR project.
