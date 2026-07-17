@@ -231,16 +231,11 @@ void R2WLocalisationFilter<FilterType_>::add_exteroceptive_updater_interface_(
 
   if (get_updater_minimal_rate(node, updater_name) != 0) {
     using Updater = typename Interface::Updater;
-    const auto log_filename = get_log_filename(node, updater_name);
-    auto updater =
-      make_exteroceptive_updater<Updater, FilterType_>(node, updater_name, log_filename);
+    auto updater = make_exteroceptive_updater<Updater, FilterType_>(node, updater_name);
     auto plugin = make_updater_interface<Interface>(node, topic_name, filter_, std::move(updater));
 
     updater_interfaces_.push_back(std::move(plugin));
     RCLCPP_INFO_STREAM(node->get_logger(), updater_name << ": started ");
-    if (!log_filename.empty()) {
-      RCLCPP_INFO_STREAM(node->get_logger(), updater_name << ": log file " << log_filename);
-    }
   } else {
     RCLCPP_INFO_STREAM(node->get_logger(), updater_name + ": unconfigured ");
   }
