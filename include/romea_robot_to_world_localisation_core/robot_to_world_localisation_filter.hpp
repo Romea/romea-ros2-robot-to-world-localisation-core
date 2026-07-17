@@ -17,9 +17,11 @@
 #define ROMEA_ROBOT_TO_WORLD_LOCALISATION_CORE__ROBOT_TO_WORLD_LOCALISATION_FILTER_HPP_
 
 // std
+#include <cassert>
 #include <limits>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -40,6 +42,7 @@ class R2WLocalisationFilter
 {
 public:
   using Filter = typename core::localisation::R2WTraits<FilterType_>::Filter;
+  using MetaState = typename core::localisation::R2WTraits<FilterType_>::MetaState;
   using Predictor = typename core::localisation::R2WTraits<FilterType_>::Predictor;
   using UpdaterTwist = typename core::localisation::R2WTraits<FilterType_>::UpdaterTwist;
   using UpdaterLinearSpeed =
@@ -54,6 +57,8 @@ public:
   using UpdaterPose = typename core::localisation::R2WTraits<FilterType_>::UpdaterPose;
   using UpdaterPosition = typename core::localisation::R2WTraits<FilterType_>::UpdaterPosition;
   using Results = typename core::localisation::R2WTraits<FilterType_>::Results;
+  using MetaStateToResults =
+    typename core::localisation::R2WTraits<FilterType_>::MetaStateToResults;
 
   using UpdaterInterfaceTwist =
     UpdaterInterface<Filter, UpdaterTwist, romea_localisation_msgs::msg::ObservationTwist2DStamped>;
@@ -92,14 +97,14 @@ public:
 public:
   core::localisation::FSMState get_fsm_state();
 
-  const Results & get_results(const core::Duration & duration);
+  std::optional<Results> get_results(const core::Duration & duration);
 
   core::DiagnosticReport make_diagnostic_report(const core::Duration & duration);
 
 private:
   void make_filter_(std::shared_ptr<rclcpp::Node> node);
 
-  void make_results_(std::shared_ptr<rclcpp::Node> node);
+  void make_meta_state_to_results_(std::shared_ptr<rclcpp::Node> node);
 
   template<typename Interface>
   void add_proprioceptive_updater_interface_(
@@ -117,15 +122,21 @@ private:
     const std::string & default_trigger_mode);
 
 private:
+  rclcpp::Logger logger_;
   std::shared_ptr<Filter> filter_;
-  std::unique_ptr<Results> results_;
+  std::unique_ptr<MetaState> current_meta_state_;
+  std::unique_ptr<MetaStateToResults> meta_state_to_results_;
   std::list<std::unique_ptr<UpdaterInterfaceBase>> updater_interfaces_;
 };
 
 //-----------------------------------------------------------------------------
 template<core::FilterType FilterType_>
 R2WLocalisationFilter<FilterType_>::R2WLocalisationFilter(std::shared_ptr<rclcpp::Node> node)
-: filter_(nullptr), results_(nullptr), updater_interfaces_()
+: logger_(node->get_logger()),
+  filter_(nullptr),
+  current_meta_state_(nullptr),
+  meta_state_to_results_(nullptr),
+  updater_interfaces_()
 {
   make_filter_(node);
   add_proprioceptive_updater_interface_<UpdaterInterfaceTwist>(node, "twist_updater", "twist", 10);
@@ -145,7 +156,7 @@ R2WLocalisationFilter<FilterType_>::R2WLocalisationFilter(std::shared_ptr<rclcpp
     node, "range_updater", "range", 0, "always");
   add_exteroceptive_updater_interface_<UpdaterInterfacePose>(
     node, "pose_updater", "pose", 0, "always");
-  make_results_(node);
+  make_meta_state_to_results_(node);
 }
 
 //-----------------------------------------------------------------------------
@@ -174,9 +185,11 @@ void R2WLocalisationFilter<FilterType_>::make_filter_(std::shared_ptr<rclcpp::No
 
 //-----------------------------------------------------------------------------
 template<core::FilterType FilterType_>
-void R2WLocalisationFilter<FilterType_>::make_results_(std::shared_ptr<rclcpp::Node> node)
+void R2WLocalisationFilter<FilterType_>::make_meta_state_to_results_(
+  std::shared_ptr<rclcpp::Node> node)
 {
-  results_ = make_results<Results, FilterType_>(node);
+  current_meta_state_ = make_meta_state<MetaState, FilterType_>(node);
+  meta_state_to_results_ = make_meta_state_to_results<MetaStateToResults, FilterType_>(node);
 }
 
 //-----------------------------------------------------------------------------
@@ -218,11 +231,16 @@ void R2WLocalisationFilter<FilterType_>::add_exteroceptive_updater_interface_(
 
   if (get_updater_minimal_rate(node, updater_name) != 0) {
     using Updater = typename Interface::Updater;
-    auto updater = make_exteroceptive_updater<Updater, FilterType_>(node, updater_name);
+    const auto log_filename = get_log_filename(node, updater_name);
+    auto updater =
+      make_exteroceptive_updater<Updater, FilterType_>(node, updater_name, log_filename);
     auto plugin = make_updater_interface<Interface>(node, topic_name, filter_, std::move(updater));
 
     updater_interfaces_.push_back(std::move(plugin));
-    RCLCPP_INFO_STREAM(node->get_logger(), updater_name + ": started ");
+    RCLCPP_INFO_STREAM(node->get_logger(), updater_name << ": started ");
+    if (!log_filename.empty()) {
+      RCLCPP_INFO_STREAM(node->get_logger(), updater_name << ": log file " << log_filename);
+    }
   } else {
     RCLCPP_INFO_STREAM(node->get_logger(), updater_name + ": unconfigured ");
   }
@@ -230,12 +248,23 @@ void R2WLocalisationFilter<FilterType_>::add_exteroceptive_updater_interface_(
 
 //-----------------------------------------------------------------------------
 template<core::FilterType FilterType_>
-const typename R2WLocalisationFilter<FilterType_>::Results &
+std::optional<typename R2WLocalisationFilter<FilterType_>::Results>
 R2WLocalisationFilter<FilterType_>::get_results(const core::Duration & duration)
 {
-  results_->set_duration(duration);
-  filter_->get_current_state(duration, results_.get());
-  return *results_;
+  const auto status = filter_->get_state(duration, current_meta_state_.get());
+  switch (status) {
+    case core::FilterGetStateStatus::AVAILABLE:
+      return meta_state_to_results_->convert(*current_meta_state_);
+    case core::FilterGetStateStatus::EMPTY:
+      RCLCPP_INFO(logger_, "cannot get results because filter has no state yet");
+      return std::nullopt;
+    case core::FilterGetStateStatus::TOO_OLD:
+      RCLCPP_INFO(logger_, "cannot get results because requested state is too old");
+      return std::nullopt;
+    default:
+      assert(false);
+      return std::nullopt;
+  }
 }
 
 //-----------------------------------------------------------------------------

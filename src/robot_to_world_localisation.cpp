@@ -121,8 +121,16 @@ void R2WLocalisation<FilterType_>::timer_callback_()
 
   auto fsm_state = filter_->get_fsm_state();
   if (fsm_state == core::localisation::FSMState::RUNNING) {
-    const auto & results = filter_->get_results(to_romea_duration(stamp));
-    auto odom = results.to_pose_and_body_twist3d();
+    const auto results = filter_->get_results(to_romea_duration(stamp));
+    if (!results) {
+      status_publisher_->publish(fsm_state);
+      publish_diagnostics_(stamp);
+      return;
+    }
+
+    core::PoseAndTwist3D odom;
+    odom.pose = results->robot_pose;
+    odom.twist = results->robot_twist;
 
     // std::cout << "odom " <<
     //   odom.pose.position.x() << " " <<
