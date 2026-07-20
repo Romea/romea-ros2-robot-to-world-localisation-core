@@ -19,10 +19,13 @@
 #include <memory>
 
 // romea
+#include "romea_common_utils/conversions/fsm_conversions.hpp"
 #include "romea_common_utils/conversions/pose_and_twist3d_conversions.hpp"
+#include "romea_common_utils/log/console_fsm_logger.hpp"
 #include "romea_common_utils/publishers/data_publisher.hpp"
 #include "romea_common_utils/publishers/diagnostic_publisher.hpp"
 #include "romea_common_utils/publishers/odom_publisher.hpp"
+#include "romea_common_utils/publishers/stamped_data_publisher.hpp"
 #include "romea_common_utils/publishers/transform_publisher.hpp"
 
 // local
@@ -56,6 +59,10 @@ protected:
 
   void make_status_publisher_();
 
+  void make_fsm_event_publisher_();
+
+  void make_console_fsm_event_logger_();
+
   void make_odom_publisher_();
 
   void make_tf_publisher_();
@@ -63,6 +70,10 @@ protected:
   void make_diagnostic_publisher_();
 
   void publish_diagnostics_(const rclcpp::Time & stamp);
+
+  void publish_status_(const rclcpp::Time & stamp, const core::localisation::FSMState & fsm_state);
+
+  void publish_fsm_event_(const core::FSMEvent & event);
 
   void timer_callback_();
 
@@ -74,7 +85,9 @@ protected:
   std::shared_ptr<StampedPublisherBase<core::Pose3D>> tf_publisher_;
   std::shared_ptr<StampedPublisherBase<core::PoseAndTwist3D>> odom_publisher_;
   std::shared_ptr<StampedPublisherBase<core::DiagnosticReport>> diagnostic_publisher_;
-  std::shared_ptr<PublisherBase<core::localisation::FSMState>> status_publisher_;
+  std::shared_ptr<PublisherBase<core::FSMState>> status_publisher_;
+  std::shared_ptr<StampedPublisherBase<core::FSMEvent>> fsm_event_publisher_;
+  std::unique_ptr<ConsoleFSMLogger> console_fsm_event_logger_;
 };
 
 using R2WKalmanLocalisation = R2WLocalisation<core::FilterType::KALMAN>;

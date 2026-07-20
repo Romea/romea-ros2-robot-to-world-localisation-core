@@ -90,7 +90,9 @@ public:
     UpdaterInterface<Filter, UpdaterPose, romea_localisation_msgs::msg::ObservationPose2DStamped>;
 
 public:
-  explicit R2WLocalisationFilter(std::shared_ptr<rclcpp::Node> node);
+  explicit R2WLocalisationFilter(
+    std::shared_ptr<rclcpp::Node> node,
+    core::FSMEventCallback fsm_event_callback = nullptr);
 
   void reset();
 
@@ -127,16 +129,20 @@ private:
   std::unique_ptr<MetaState> current_meta_state_;
   std::unique_ptr<MetaStateToResults> meta_state_to_results_;
   std::list<std::unique_ptr<UpdaterInterfaceBase>> updater_interfaces_;
+  core::FSMEventCallback fsm_event_callback_;
 };
 
 //-----------------------------------------------------------------------------
 template<core::FilterType FilterType_>
-R2WLocalisationFilter<FilterType_>::R2WLocalisationFilter(std::shared_ptr<rclcpp::Node> node)
+R2WLocalisationFilter<FilterType_>::R2WLocalisationFilter(
+  std::shared_ptr<rclcpp::Node> node,
+  core::FSMEventCallback fsm_event_callback)
 : logger_(node->get_logger()),
   filter_(nullptr),
   current_meta_state_(nullptr),
   meta_state_to_results_(nullptr),
-  updater_interfaces_()
+  updater_interfaces_(),
+  fsm_event_callback_(std::move(fsm_event_callback))
 {
   make_filter_(node);
   add_proprioceptive_updater_interface_<UpdaterInterfaceTwist>(node, "twist_updater", "twist", 10);
@@ -179,7 +185,7 @@ void R2WLocalisationFilter<FilterType_>::make_filter_(std::shared_ptr<rclcpp::No
 {
   declare_filter_parameters<FilterType_>(node);
   declare_predictor_parameters(node, 2.0, 10.0, std::numeric_limits<double>::max());
-  filter_ = make_filter<Filter, Predictor, FilterType_>(node);
+  filter_ = make_filter<Filter, Predictor, FilterType_>(node, fsm_event_callback_);
   RCLCPP_INFO_STREAM(node->get_logger(), "filter: started ");
 }
 
@@ -231,7 +237,8 @@ void R2WLocalisationFilter<FilterType_>::add_exteroceptive_updater_interface_(
 
   if (get_updater_minimal_rate(node, updater_name) != 0) {
     using Updater = typename Interface::Updater;
-    auto updater = make_exteroceptive_updater<Updater, FilterType_>(node, updater_name);
+    auto updater = make_exteroceptive_updater<Updater, FilterType_>(
+      node, updater_name, make_topic_logger(node, updater_name), fsm_event_callback_);
     auto plugin = make_updater_interface<Interface>(node, topic_name, filter_, std::move(updater));
 
     updater_interfaces_.push_back(std::move(plugin));

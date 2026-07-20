@@ -17,7 +17,6 @@
 
 // romea
 #include "romea_common_utils/qos.hpp"
-#include "romea_localisation_utils/conversions/localisation_status_conversions.hpp"
 #include "romea_robot_to_world_localisation_core/robot_to_world_localisation.hpp"
 
 namespace romea
@@ -34,7 +33,9 @@ R2WLocalisation<FilterType_>::R2WLocalisation(const rclcpp::NodeOptions & option
   filter_(nullptr),
   tf_publisher_(nullptr),
   odom_publisher_(nullptr),
-  diagnostic_publisher_(nullptr)
+  diagnostic_publisher_(nullptr),
+  fsm_event_publisher_(nullptr),
+  console_fsm_event_logger_(nullptr)
 {
   declare_debug(node_);
   declare_log_directory(node_);
@@ -47,6 +48,8 @@ R2WLocalisation<FilterType_>::R2WLocalisation(const rclcpp::NodeOptions & option
   make_odom_publisher_();
   make_diagnostic_publisher_();
   make_status_publisher_();
+  make_fsm_event_publisher_();
+  make_console_fsm_event_logger_();
   make_timer_();
 }
 
@@ -62,16 +65,35 @@ R2WLocalisation<FilterType_>::get_node_base_interface() const
 template<core::FilterType FilterType_>
 void R2WLocalisation<FilterType_>::make_filter_()
 {
-  filter_ = std::make_unique<R2WLocalisationFilter<FilterType_>>(node_);
+  filter_ = std::make_unique<R2WLocalisationFilter<FilterType_>>(
+    node_, [this](const core::FSMEvent & event) { publish_fsm_event_(event); });
 }
 
 //-----------------------------------------------------------------------------
 template<core::FilterType FilterType_>
 void R2WLocalisation<FilterType_>::make_status_publisher_()
 {
-  using DataType = core::localisation::FSMState;
-  using MsgType = romea_localisation_msgs::msg::LocalisationStatus;
+  using DataType = core::FSMState;
+  using MsgType = romea_common_msgs::msg::FSMState;
   status_publisher_ = make_data_publisher<DataType, MsgType>(node_, "status", reliable(1), true);
+}
+
+//-----------------------------------------------------------------------------
+template<core::FilterType FilterType_>
+void R2WLocalisation<FilterType_>::make_fsm_event_publisher_()
+{
+  using DataType = core::FSMEvent;
+  using MsgType = romea_common_msgs::msg::FSMEvent;
+  fsm_event_publisher_ =
+    make_stamped_data_publisher<DataType, MsgType>(
+      node_, "debug/fsm", "", reliable(10), get_debug(node_));
+}
+
+//-----------------------------------------------------------------------------
+template<core::FilterType FilterType_>
+void R2WLocalisation<FilterType_>::make_console_fsm_event_logger_()
+{
+  console_fsm_event_logger_ = std::make_unique<ConsoleFSMLogger>(node_->get_logger());
 }
 
 //-----------------------------------------------------------------------------
@@ -123,7 +145,7 @@ void R2WLocalisation<FilterType_>::timer_callback_()
   if (fsm_state == core::localisation::FSMState::RUNNING) {
     const auto results = filter_->get_results(to_romea_duration(stamp));
     if (!results) {
-      status_publisher_->publish(fsm_state);
+      publish_status_(stamp, fsm_state);
       publish_diagnostics_(stamp);
       return;
     }
@@ -144,8 +166,25 @@ void R2WLocalisation<FilterType_>::timer_callback_()
     tf_publisher_->publish(stamp, odom.pose);
   }
 
-  status_publisher_->publish(fsm_state);
+  publish_status_(stamp, fsm_state);
   publish_diagnostics_(stamp);
+}
+
+//-----------------------------------------------------------------------------
+template<core::FilterType FilterType_>
+void R2WLocalisation<FilterType_>::publish_status_(
+  const rclcpp::Time & /*stamp*/, const core::localisation::FSMState & fsm_state)
+{
+  auto current_state = core::localisation::to_common_fsm_state(fsm_state);
+  status_publisher_->publish(current_state);
+}
+
+//-----------------------------------------------------------------------------
+template<core::FilterType FilterType_>
+void R2WLocalisation<FilterType_>::publish_fsm_event_(const core::FSMEvent & event)
+{
+  fsm_event_publisher_->publish(node_->get_clock()->now(), event);
+  console_fsm_event_logger_->log(event);
 }
 
 //-----------------------------------------------------------------------------

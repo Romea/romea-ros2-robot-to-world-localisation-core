@@ -10,7 +10,7 @@ It also provides an optional robot-to-world and robot-to-robot mode. In that mod
 
 Localisation plugin nodes convert ROS2 sensor or controller data into typed observations. This package is the filter layer that subscribes to these observations and instantiates robot-to-world filter implementations provided by `romea_core_localisation`.
 
-The filter fuses odometry, IMU, GPS and optional RTLS observations to estimate the vehicle pose in the world frame, together with its uncertainty. The result is published as `nav_msgs/msg/Odometry` and as a TF transform between the world frame and the robot base frame. The node also publishes diagnostics to check that the expected observations exist and arrive at the expected rate, and a localisation status message to indicate whether the filter result can be used by other nodes.
+The filter fuses odometry, IMU, GPS and optional RTLS observations to estimate the vehicle pose in the world frame, together with its uncertainty. The result is published as `nav_msgs/msg/Odometry` and as a TF transform between the world frame and the robot base frame. The node also publishes diagnostics to check that the expected observations exist and arrive at the expected rate, a finite-state-machine status, and FSM transition events.
 
 A second node variant also computes the relative pose between this robot and a leader robot. It consumes the leader robot localisation result as `nav_msgs/msg/Odometry` and publishes the leader pose in the follower robot frame. This is useful for platooning or cooperative behaviours.
 
@@ -38,7 +38,10 @@ flowchart LR
   end
 
   subgraph outputs["ROS2 outputs"]
-    status["status<br/>LocalisationStatus"]
+    status["status<br/>FSMState"]
+    fsm_events["debug/fsm<br>FSMEvent"]
+    predictor_debug["debug/predictor<br>DataLogger"]
+    updater_debug["debug/updater_*<br>DataLogger"]
     diagnostics["diagnostics<br/>diagnostic report"]
     filtered_odom["filtered_odom<br/>Odometry"]
     tf["map -> base_footprint<br/>TF transform"]
@@ -61,6 +64,9 @@ flowchart LR
   pose -->|consume| filter
 
   filter -->|publish| status
+  filter -->|publish| fsm_events
+  filter -->|publish| predictor_debug
+  filter -->|publish| updater_debug
   filter -->|publish| diagnostics
   filter -->|publish| filtered_odom
   filter -->|publish| tf
@@ -73,7 +79,7 @@ flowchart LR
   class odo_plugin,imu_plugin,gps_plugin,rtls_plugin pluginStyle
   class twist,angular_speed,attitude,position,course,range,pose obs
   class filter coreStyle
-  class status,diagnostics,filtered_odom,tf ros2
+  class status,fsm_events,predictor_debug,updater_debug,diagnostics,filtered_odom,tf ros2
 
   style plugins fill:#f7fff7,stroke:#9ecf9e,rx:6,ry:6
   style observation_inputs fill:#fffaf0,stroke:#dec86b,rx:6,ry:6
@@ -105,7 +111,7 @@ The observation topics are local to the node namespace. They are usually remappe
 | `course` | `romea_localisation_msgs/msg/ObservationCourseStamped` | Course updater. |
 | `range` | `romea_localisation_msgs/msg/ObservationRangeStamped` | Range updater. |
 | `pose` | `romea_localisation_msgs/msg/ObservationPose2DStamped` | Pose updater. |
-| `leader_filtered_odom` | `nav_msgs/msg/Odometry` | Only used by the robot-to-world and robot-to-robot nodes. |
+|                 |                                                              |                                                              |
 
 An updater is created only when its `minimal_rate` parameter is greater than zero.
 
@@ -114,9 +120,14 @@ An updater is created only when its `minimal_rate` parameter is greater than zer
 | Topic | Message | Description |
 | ----- | ------- | ----------- |
 | `filtered_odom` | `nav_msgs/msg/Odometry` | Estimated robot pose and twist in the world frame, with uncertainty. |
-| `status` | `romea_localisation_msgs/msg/LocalisationStatus` | Current localisation finite-state-machine status. |
+| `status` | `romea_common_msgs/msg/FSMState` | Current localisation finite-state-machine status. |
+| `debug/fsm` | `romea_common_msgs/msg/FSMEvent` | Localisation finite-state-machine transitions. |
+| `debug/predictor` | `romea_common_msgs/msg/DataLogger` | Debug data for the predictor. |
+| `debug/<updater_name>` | `romea_common_msgs/msg/DataLogger` | Debug data for the named updater. |
 | `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | Diagnostic information for configured updaters. |
 | `filtered_leader_pose` | `romea_common_msgs/msg/PoseAndTwist2DStamped` | Relative leader pose and twist, only for robot-to-world and robot-to-robot nodes. |
+
+`debug/*` topics publish only when the `debug` parameter is `true`.
 
 The node also publishes the TF transform from `map_frame_id` to `base_footprint_frame_id`. The `filtered_leader_pose` frame is the configured `base_footprint_frame_id`.
 
