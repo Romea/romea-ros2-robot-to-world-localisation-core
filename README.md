@@ -113,7 +113,7 @@ The observation topics are local to the node namespace. They are usually remappe
 | `pose` | `romea_localisation_msgs/msg/ObservationPose2DStamped` | Pose updater. |
 |                 |                                                              |                                                              |
 
-An updater is created only when its `minimal_rate` parameter is greater than zero.
+An updater is created only when its `minimal_rate` parameter is greater than zero. A `minimal_rate` equal to `0` is only a node configuration convention used to disable the updater; constructed core updaters require a strictly positive rate.
 
 ## 4) Output topics
 
@@ -150,11 +150,10 @@ The node also publishes the TF transform from `map_frame_id` to `base_footprint_
 | `filter.state_pool_size` | int | Size of the internal filter state pool. |
 | `predictor.maximal_dead_recknoning_travelled_distance` | double | Maximum travelled distance allowed in dead-reckoning mode. |
 | `predictor.maximal_dead_recknoning_elapsed_time` | double | Maximum elapsed time allowed in dead-reckoning mode. |
-| `predictor.maximal_position_circular_error_probability` | double | Maximum circular position uncertainty allowed in dead-reckoning mode. |
 
 ### 5.3) Updater parameters
 
-Proprioceptive updaters use observations that describe the robot motion between two instants. A `minimal_rate` equal to `0` disables the updater.
+Proprioceptive updaters use observations that describe the robot motion between two instants. A `minimal_rate` equal to `0` disables the updater before it is constructed.
 
 | Updater | Topic | Default `minimal_rate` | Description |
 | ------- | ----- | ---------------------- | ----------- |
@@ -202,7 +201,6 @@ robot_to_world_localisation:
     predictor:
       maximal_dead_recknoning_travelled_distance: 2.0
       maximal_dead_recknoning_elapsed_time: 10.0
-      maximal_position_circular_error_probability: 1000000.0
 
     map_frame_id: map
     base_footprint_frame_id: base_footprint
