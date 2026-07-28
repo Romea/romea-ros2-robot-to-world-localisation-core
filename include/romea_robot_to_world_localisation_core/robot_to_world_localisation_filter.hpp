@@ -171,9 +171,9 @@ template<core::FilterType FilterType_>
 void R2WLocalisationFilter<FilterType_>::add_updaters_(std::shared_ptr<rclcpp::Node> node)
 {
   add_updater_<UpdaterInterfaceTwist>(node, "twist_updater", "twist");
-  add_updater_<UpdaterInterfaceLinearSpeed>(node, "linear_speed_updater", "linear_speed");
+  add_updater_<UpdaterInterfaceLinearSpeed>(node, "linear_speed_updater", "twist");
   add_updater_<UpdaterInterfaceLinearSpeeds>(
-    node, "linear_speeds_updater", "linear_speeds");
+    node, "linear_speeds_updater", "twist");
   add_updater_<UpdaterInterfaceAngularSpeed>(
     node, "angular_speed_updater", "angular_speed");
   add_updater_<UpdaterInterfaceAttitude>(node, "attitude_updater", "attitude");
