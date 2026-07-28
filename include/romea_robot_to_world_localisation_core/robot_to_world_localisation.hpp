@@ -69,7 +69,9 @@ protected:
 
   void make_diagnostic_publisher_();
 
-  void publish_diagnostics_(const rclcpp::Time & stamp);
+  void publish_diagnostics_(
+    const rclcpp::Time & stamp,
+    const core::localisation::FSMState & fsm_state);
 
   void publish_status_(const rclcpp::Time & stamp, const core::localisation::FSMState & fsm_state);
 

@@ -16,6 +16,7 @@
 #include <memory>
 
 // romea
+#include "romea_common_utils/conversions/fsm_conversions.hpp"
 #include "romea_common_utils/qos.hpp"
 #include "romea_robot_to_world_localisation_core/robot_to_world_localisation.hpp"
 
@@ -141,18 +142,13 @@ void R2WLocalisation<FilterType_>::timer_callback_()
   // publish odom
   auto stamp = node_->get_clock()->now();
 
-  auto fsm_state = filter_->get_fsm_state();
-  if (fsm_state == core::localisation::FSMState::RUNNING) {
-    const auto results = filter_->get_results(to_romea_duration(stamp));
-    if (!results) {
-      publish_status_(stamp, fsm_state);
-      publish_diagnostics_(stamp);
-      return;
-    }
+  const auto query = filter_->get_results(to_romea_duration(stamp));
+  const auto fsm_state = query.fsm_state;
 
+  if (query) {
     core::PoseAndTwist3D odom;
-    odom.pose = results->robot_pose;
-    odom.twist = results->robot_twist;
+    odom.pose = query.results->robot_pose;
+    odom.twist = query.results->robot_twist;
 
     // std::cout << "odom " <<
     //   odom.pose.position.x() << " " <<
@@ -167,7 +163,7 @@ void R2WLocalisation<FilterType_>::timer_callback_()
   }
 
   publish_status_(stamp, fsm_state);
-  publish_diagnostics_(stamp);
+  publish_diagnostics_(stamp, fsm_state);
 }
 
 //-----------------------------------------------------------------------------
@@ -189,9 +185,11 @@ void R2WLocalisation<FilterType_>::publish_fsm_event_(const core::FSMEvent & eve
 
 //-----------------------------------------------------------------------------
 template<core::FilterType FilterType_>
-void R2WLocalisation<FilterType_>::publish_diagnostics_(const rclcpp::Time & stamp)
+void R2WLocalisation<FilterType_>::publish_diagnostics_(
+  const rclcpp::Time & stamp,
+  const core::localisation::FSMState & fsm_state)
 {
-  auto report = filter_->make_diagnostic_report(to_romea_duration(stamp));
+  auto report = filter_->make_diagnostic_report(to_romea_duration(stamp), fsm_state);
   diagnostic_publisher_->publish(stamp, report);
 }
 
