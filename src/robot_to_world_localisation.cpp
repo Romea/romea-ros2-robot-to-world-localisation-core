@@ -17,6 +17,7 @@
 
 // romea
 #include "romea_common_utils/conversions/fsm_conversions.hpp"
+#include "romea_common_utils/params/algorithm_parameters.hpp"
 #include "romea_common_utils/qos.hpp"
 #include "romea_robot_to_world_localisation_core/robot_to_world_localisation.hpp"
 

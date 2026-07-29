@@ -22,9 +22,11 @@
 #include <utility>
 
 // romea
-#include "romea_core_localisation/filter.hpp"
+#include "romea_core_localisation/filters.hpp"
 #include "romea_core_localisation/robot_to_world/traits.hpp"
-#include "romea_localisation_utils/filter/factory.hpp"
+#include "romea_core_localisation/updater_traits.hpp"
+#include "romea_localisation_utils/filter/loggers.hpp"
+#include "romea_localisation_utils/filter/parameters.hpp"
 #include "romea_localisation_utils/filter/updater_interface.hpp"
 #include "romea_localisation_utils/filter/updater_interfaces.hpp"
 
@@ -43,7 +45,6 @@ class R2WLocalisationFilter
 public:
   using Traits = core::localisation::R2WTraits<FilterType_>;
   using Filter = core::localisation::Filter<FilterType_, Traits>;
-  using Predictor = typename Traits::Predictor;
   using Results = typename Traits::Results;
   using Query = core::localisation::FilterQuery<Results>;
   using UpdaterTwist = typename Traits::UpdaterTwist;
@@ -94,6 +95,10 @@ private:
 
   void add_updaters_(std::shared_ptr<rclcpp::Node> node);
 
+  void initialize_filter_(std::shared_ptr<rclcpp::Node> node);
+
+  typename Filter::LoggerMap make_loggers_(std::shared_ptr<rclcpp::Node> node);
+
   template<typename Interface>
   void add_updater_(
     std::shared_ptr<rclcpp::Node> node,
@@ -119,7 +124,7 @@ R2WLocalisationFilter<FilterType_>::R2WLocalisationFilter(
   configure_(node);
   make_filter_(node);
   add_updaters_(node);
-  filter_->initialize();
+  initialize_filter_(node);
   updater_interfaces_.create(node);
 }
 
@@ -151,17 +156,15 @@ void R2WLocalisationFilter<FilterType_>::configure_(std::shared_ptr<rclcpp::Node
 template<core::FilterType FilterType_>
 void R2WLocalisationFilter<FilterType_>::make_filter_(std::shared_ptr<rclcpp::Node> node)
 {
-  auto predictor = make_predictor<Predictor, FilterType_>(node);
-  predictor->register_logger(make_topic_logger(node, "predictor"));
-  predictor->register_fsm_event_callback(fsm_event_callback_);
-
-  filter_ = make_filter<Filter, FilterType_>(node, std::move(predictor));
-
-  filter_->register_event_log_callback(
-    [this](const std::string & message) {RCLCPP_INFO(logger_, "%s", message.c_str());});
-  filter_->register_get_results_log_callback([this, node](const std::string & message) {
-      RCLCPP_INFO_THROTTLE(logger_, *node->get_clock(), 1000, "%s", message.c_str());
-  });
+  if constexpr (FilterType_ == core::FilterType::KALMAN) {
+    filter_ = std::make_unique<Filter>(
+      get_filter_state_pool_size(node), get_dead_reckoning_limits(node));
+  } else {
+    filter_ = std::make_unique<Filter>(
+      get_filter_state_pool_size(node),
+      get_filter_number_of_particles(node),
+      get_dead_reckoning_limits(node));
+  }
 
   RCLCPP_INFO_STREAM(node->get_logger(), "filter: started ");
 }
@@ -172,15 +175,49 @@ void R2WLocalisationFilter<FilterType_>::add_updaters_(std::shared_ptr<rclcpp::N
 {
   add_updater_<UpdaterInterfaceTwist>(node, "twist_updater", "twist");
   add_updater_<UpdaterInterfaceLinearSpeed>(node, "linear_speed_updater", "twist");
-  add_updater_<UpdaterInterfaceLinearSpeeds>(
-    node, "linear_speeds_updater", "twist");
-  add_updater_<UpdaterInterfaceAngularSpeed>(
-    node, "angular_speed_updater", "angular_speed");
+  add_updater_<UpdaterInterfaceLinearSpeeds>(node, "linear_speeds_updater", "twist");
+  add_updater_<UpdaterInterfaceAngularSpeed>(node, "angular_speed_updater", "angular_speed");
   add_updater_<UpdaterInterfaceAttitude>(node, "attitude_updater", "attitude");
   add_updater_<UpdaterInterfacePosition>(node, "position_updater", "position");
   add_updater_<UpdaterInterfaceCourse>(node, "course_updater", "course");
   add_updater_<UpdaterInterfaceRange>(node, "range_updater", "range");
   add_updater_<UpdaterInterfacePose>(node, "pose_updater", "pose");
+}
+
+//-----------------------------------------------------------------------------
+template<core::FilterType FilterType_>
+void R2WLocalisationFilter<FilterType_>::initialize_filter_(std::shared_ptr<rclcpp::Node> node)
+{
+  const auto event_log_callback = [this](const std::string & message) {
+    RCLCPP_INFO(logger_, "%s", message.c_str());
+  };
+
+  const auto get_results_log_callback = [this, node](const std::string & message) {
+    RCLCPP_INFO_THROTTLE(logger_, *node->get_clock(), 1000, "%s", message.c_str());
+  };
+
+  filter_->initialize(
+    event_log_callback,
+    get_results_log_callback,
+    fsm_event_callback_,
+    make_loggers_(node));
+}
+
+//-----------------------------------------------------------------------------
+template<core::FilterType FilterType_>
+typename R2WLocalisationFilter<FilterType_>::Filter::LoggerMap
+R2WLocalisationFilter<FilterType_>::make_loggers_(std::shared_ptr<rclcpp::Node> node)
+{
+  if (!get_debug(node)) {
+    return {};
+  }
+
+  return {
+    {"predictor", make_topic_logger(node, "predictor")},
+    {"position_updater", make_topic_logger(node, "position_updater")},
+    {"course_updater", make_topic_logger(node, "course_updater")},
+    {"range_updater", make_topic_logger(node, "range_updater")},
+    {"pose_updater", make_topic_logger(node, "pose_updater")}};
 }
 
 //-----------------------------------------------------------------------------
@@ -193,9 +230,18 @@ void R2WLocalisationFilter<FilterType_>::add_updater_(
 {
   if (get_updater_minimal_rate(node, updater_name) != 0) {
     using Updater = typename Interface::Updater;
-    auto updater = make_updater<Updater, FilterType_>(
-      node, updater_name, make_topic_logger(node, updater_name), fsm_event_callback_);
-    auto callback = filter_->add_updater(std::move(updater));
+    auto callback = [&]() {
+      if constexpr (core::localisation::is_proprioceptive_updater<Updater>()) {
+        return filter_->template add_proprioceptive_updater<Updater>(
+          updater_name, get_updater_minimal_rate(node, updater_name));
+      } else {
+        return filter_->template add_exteroceptive_updater<Updater>(
+          updater_name,
+          get_updater_minimal_rate(node, updater_name),
+          core::localisation::to_trigger_mode(get_updater_trigger_mode(node, updater_name)),
+          get_updater_mahalanobis_distance_rejection_threshold(node, updater_name));
+      }
+    }();
 
     if (!callback) {
       return;

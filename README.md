@@ -89,12 +89,12 @@ flowchart LR
 
 ## 2) Provided nodes
 
-The documented nodes use the Kalman filter implementation.
-
 | Executable | Purpose |
 | ---------- | ------- |
-| `robot_to_world_kalman_localisation_node` | Estimate the robot pose in the world frame from localisation observations. |
-| `robot_to_world_and_robot_to_robot_kalman_localisation_node` | Estimate robot-to-world localisation and compute the relative pose of a leader robot from its filtered odometry. |
+| `robot_to_world_kalman_localisation_node` | Estimate the robot pose in the world frame with a Kalman filter. |
+| `robot_to_world_particle_localisation_node` | Estimate the robot pose in the world frame with a particle filter. |
+| `robot_to_world_and_robot_to_robot_kalman_localisation_node` | Estimate robot-to-world localisation with a Kalman filter and compute the relative pose of a leader robot from its filtered odometry. |
+| `robot_to_world_and_robot_to_robot_particle_localisation_node` | Estimate robot-to-world localisation with a particle filter and compute the relative pose of a leader robot from its filtered odometry. |
 
 All nodes use the ROS2 node name `robot_to_world_localisation`.
 
@@ -111,7 +111,6 @@ The observation topics are local to the node namespace. They are usually remappe
 | `course` | `romea_localisation_msgs/msg/ObservationCourseStamped` | Course updater. |
 | `range` | `romea_localisation_msgs/msg/ObservationRangeStamped` | Range updater. |
 | `pose` | `romea_localisation_msgs/msg/ObservationPose2DStamped` | Pose updater. |
-|                 |                                                              |                                                              |
 
 An updater is created only when its `minimal_rate` parameter is greater than zero. A `minimal_rate` equal to `0` is only a node configuration convention used to disable the updater; constructed core updaters require a strictly positive rate.
 
@@ -131,6 +130,8 @@ An updater is created only when its `minimal_rate` parameter is greater than zer
 
 The node also publishes the TF transform from `map_frame_id` to `base_footprint_frame_id`. The `filtered_leader_pose` frame is the configured `base_footprint_frame_id`.
 
+The `status` topic reports the localisation FSM state. Results are published only when the filter query is available and the localisation state is `RUNNING`. If the query is too far from the last internal filter state, the query is rejected and the localisation state can be reported as `STALE`.
+
 ## 5) Parameters
 
 ### 5.1) Common parameters
@@ -140,14 +141,15 @@ The node also publishes the TF transform from `map_frame_id` to `base_footprint_
 | `base_footprint_frame_id` | string | `base_footprint` | Robot base frame used by the localisation outputs. |
 | `map_frame_id` | string | `map` | World frame used by the robot-to-world estimate. |
 | `publish_rate` | int | required | Timer frequency used to publish status, diagnostics and localisation results. |
-| `debug` | bool | `false` | Enables debug log files. |
-| `log_directory` | string | ROS2 logging directory | Directory used when debug logging is enabled. |
+| `debug` | bool | `false` | Enables debug topic loggers. |
+| `log_directory` | string | ROS2 logging directory | Declared for compatibility with common debug/logging parameters. |
 
 ### 5.2) Filter and predictor parameters
 
 | Parameter | Type | Description |
 | --------- | ---- | ----------- |
 | `filter.state_pool_size` | int | Size of the internal filter state pool. |
+| `filter.number_of_particles` | int | Number of particles used by particle filter implementations. |
 | `predictor.maximal_dead_recknoning_travelled_distance` | double | Maximum travelled distance allowed in dead-reckoning mode. |
 | `predictor.maximal_dead_recknoning_elapsed_time` | double | Maximum elapsed time allowed in dead-reckoning mode. |
 
@@ -169,10 +171,12 @@ Exteroceptive updaters use observations that directly constrain the robot pose i
 | ------- | ----- | ---------------------- | ----------------- | ----------------------------- | ----------- |
 | `position_updater` | `position` | `1` | `always` | `5.0` | Uses 2D position observations. |
 | `course_updater` | `course` | `1` | `once` | `5.0` | Uses course observations. |
-| `range_updater` | `range` | `0` | `always` | `5.0` | Uses range observations. |
-| `pose_updater` | `pose` | `0` | `always` | `5.0` | Uses 2D pose observations. |
+| `range_updater` | `range` | `10` | `always` | `5.0` | Uses range observations. |
+| `pose_updater` | `pose` | `1` | `once` | `5.0` | Uses 2D pose observations. |
 
 `trigger` can be `always` or `once`. With `always`, each received observation can update the filter. With `once`, the updater is used only for the first valid observation, which is useful for initialisation data such as course.
+
+When the filter is already `RUNNING`, missing or slow exteroceptive observations are reported as warnings in diagnostics because dead-reckoning can continue for a bounded time and distance. Proprioceptive updater diagnostics remain strict because these inputs are required by prediction.
 
 ## 6) Configuration and run
 
@@ -183,10 +187,24 @@ ros2 run romea_robot_to_world_localisation_core robot_to_world_kalman_localisati
   --ros-args --params-file path/to/robot_to_world_localisation.yaml
 ```
 
+Run a robot-to-world particle localisation node with:
+
+```bash
+ros2 run romea_robot_to_world_localisation_core robot_to_world_particle_localisation_node \
+  --ros-args --params-file path/to/robot_to_world_localisation.yaml
+```
+
 Run the robot-to-world and robot-to-robot variant with:
 
 ```bash
 ros2 run romea_robot_to_world_localisation_core robot_to_world_and_robot_to_robot_kalman_localisation_node \
+  --ros-args --params-file path/to/robot_to_world_localisation.yaml
+```
+
+Run the particle robot-to-world and robot-to-robot variant with:
+
+```bash
+ros2 run romea_robot_to_world_localisation_core robot_to_world_and_robot_to_robot_particle_localisation_node \
   --ros-args --params-file path/to/robot_to_world_localisation.yaml
 ```
 
@@ -197,6 +215,7 @@ robot_to_world_localisation:
   ros__parameters:
     filter:
       state_pool_size: 1000
+      number_of_particles: 10000
 
     predictor:
       maximal_dead_recknoning_travelled_distance: 2.0
